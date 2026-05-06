@@ -7,7 +7,9 @@
 
 void  autoZero();
 float readVoltage();
+float readVoltageMean();
 float readCurrent();
 float readResistance();
+float readResistanceMean();
 
 #endif

@@ -1,5 +1,8 @@
 #include "sensors.h"
 
+extern bool checkButton();
+extern int  mode;
+
 static float zeroOffsetV = 0.0f;
 static float zeroOffsetI = 0.0f;
 
@@ -7,11 +10,8 @@ void autoZero() {
     analogReference(DEFAULT);
     delay(50);
 
-    analogRead(VOLT_PIN);
-    delay(10);
-    float avgV  = readADC(VOLT_PIN, 1000);
-    zeroOffsetV = (avgV / ADC_MAX) * VREF * DIVIDER_RATIO * CAL_V;
-    if (zeroOffsetV > 2.0f) zeroOffsetV = 0.0f;
+    // voltage autozero disabled — midrail handles offset
+    zeroOffsetV = 0.0f;
 
     analogRead(CURR_PIN);
     delay(10);
@@ -30,8 +30,32 @@ float readVoltage() {
 
     if (abs(v1 - v2) > 0.3f) return 0.0f;
 
-    float v = ((v1 + v2) / 2.0f) - zeroOffsetV;
-    return (v < 0.0f) ? 0.0f : v;
+    float v = (v1 + v2) / 2.0f;
+
+    // subtract midrail bias
+    v = v - (V_MIDRAIL * DIVIDER_RATIO * CAL_V);
+
+    // separate slopes for positive and negative
+    if (v >= 0.0f) {
+        v = (V_SLOPE_POS * v) + V_OFFSET;
+    } else {
+        v = (V_SLOPE_NEG * v) + V_OFFSET;
+    }
+
+    // dead-band
+    if (abs(v) < V_DEADBAND) v = 0.0f;
+
+    return v;
+}
+
+float readVoltageMean() {
+    float sum = 0.0f;
+    for (int i = 0; i < MEAN_V; i++) {
+        if (checkButton()) return 0.0f;
+        sum += readVoltage();
+        delay(10);
+    }
+    return sum / (float)MEAN_V;
 }
 
 float readCurrent() {
@@ -49,7 +73,24 @@ float readResistance() {
     float vOut = (adc / ADC_MAX) * VREF;
 
     if (vOut >= 4.9f) return -1.0f;
-    if (vOut <= 0.1f) return 0.0f;
+    if (vOut <= 0.1f) return  0.0f;
 
     return (vOut * R_KNOWN) / (VREF - vOut);
+}
+
+float readResistanceMean() {
+    float sum        = 0.0f;
+    int   validCount = 0;
+
+    for (int i = 0; i < MEAN_R; i++) {
+        if (checkButton()) return -1.0f;
+        float r = readResistance();
+        if (r >= 0.0f) {
+            sum += r;
+            validCount++;
+        }
+        delay(10);
+    }
+
+    return (validCount == 0) ? -1.0f : sum / (float)validCount;
 }

@@ -8,9 +8,25 @@
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-static int   mode            = 0;
-static bool  lastButtonState = LOW;
-static float filteredCurrent = 0.0f;
+int   mode            = 0;
+bool  lastButtonState = LOW;
+float filteredCurrent = 0.0f;
+
+unsigned long lastUpdateTime = 0;
+
+bool checkButton() {
+    bool currentButton = digitalRead(BUTTON_PIN);
+    if (currentButton == HIGH && lastButtonState == LOW) {
+        lastButtonState = currentButton;
+        mode++;
+        if (mode > 2) mode = 0;
+        lcd.clear();
+        lastUpdateTime = 0;
+        return true;
+    }
+    lastButtonState = currentButton;
+    return false;
+}
 
 void setup() {
     Serial.begin(9600);
@@ -34,30 +50,33 @@ void setup() {
 }
 
 void loop() {
-    bool currentButton = digitalRead(BUTTON_PIN);
-    if (currentButton == HIGH && lastButtonState == LOW) {
-        mode = (mode + 1) % 3;
-        lcd.clear();
-        delay(200);
-    }
-    lastButtonState = currentButton;
+    checkButton();
 
-    switch (mode) {
-        case 0:
-            displayVoltage(lcd, readVoltage());
-            break;
-
-        case 1: {
-            float raw = readCurrent();
-            filteredCurrent = (ALPHA * raw) + ((1.0f - ALPHA) * filteredCurrent);
-            displayCurrent(lcd, filteredCurrent * 1000.0f);
-            break;
+    if (mode == 0) {
+        if (millis() - lastUpdateTime >= UPDATE_INTERVAL) {
+            float voltage = readVoltageMean();
+            if (mode == 0) {
+                displayVoltage(lcd, voltage);
+            }
+            lastUpdateTime = millis();
         }
-
-        case 2:
-            displayResistance(lcd, readResistance());
-            break;
     }
 
-    delay(150);
+    else if (mode == 1) {
+        float raw = readCurrent();
+        filteredCurrent = (ALPHA * raw) + ((1.0f - ALPHA) * filteredCurrent);
+        displayCurrent(lcd, filteredCurrent * 1000.0f);
+    }
+
+    else if (mode == 2) {
+        if (millis() - lastUpdateTime >= UPDATE_INTERVAL) {
+            float resistance = readResistanceMean();
+            if (mode == 2) {
+                displayResistance(lcd, resistance);
+            }
+            lastUpdateTime = millis();
+        }
+    }
+
+    delay(10);
 }
